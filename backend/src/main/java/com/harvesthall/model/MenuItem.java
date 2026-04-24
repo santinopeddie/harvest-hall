@@ -25,6 +25,8 @@ public class MenuItem {
 
     private String description;
 
+    private String image;
+
     @Column(nullable = false)
     private Boolean available = true;
 
@@ -57,4 +59,7 @@ public class MenuItem {
 
     public Boolean getAvailable() { return available; }
     public void setAvailable(Boolean available) { this.available = available; }
+
+    public String getImage() { return image; }
+    public void setImage(String image) { this.image = image; }
 }
