@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel – Harvest Hall</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+  <style>
+    .admin-layout { display: grid; grid-template-columns: 1fr 380px; gap: 28px; align-items: start; }
+    @media(max-width:860px) { .admin-layout { grid-template-columns: 1fr; } }
+    .action-btns { display: flex; gap: 8px; }
+  </style>
+</head>
+<body>
+
+<header class="navbar">
+  <span class="brand">🌾 Harvest Hall — Admin</span>
+  <nav>
+    <a href="../index.html">Back to Menu</a>
+    <a href="kitchen.html">Kitchen</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="admin-layout">
+
+    <!-- Left: menu item table -->
+    <div>
+      <div class="flex-between" style="margin-bottom:16px;">
+        <h2 class="section-title" style="margin:0">Menu Management</h2>
+        <button class="btn btn-primary" onclick="showAddForm()">+ Add Item</button>
+      </div>
+
+      <div id="loading" class="spinner"></div>
+      <div id="table-wrap" style="display:none; overflow-x:auto;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th><th>Name</th><th>Category</th>
+              <th>Price</th><th>Available</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="menu-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Right: add/edit form -->
+    <div class="form-card" id="item-form-card">
+      <h3 id="form-title" style="color:var(--green); margin-bottom:18px;">Add Menu Item</h3>
+
+      <input type="hidden" id="edit-id" />
+
+      <div class="form-group" id="fg-item-name">
+        <label>Item Name *</label>
+        <input type="text" id="inp-item-name" placeholder="e.g. Veggie Wrap" />
+        <span class="error-msg">Name is required.</span>
+      </div>
+
+      <div class="form-group" id="fg-item-cat">
+        <label>Category *</label>
+        <select id="inp-item-cat">
+          <option value="">— select —</option>
+          <option>Burgers</option>
+          <option>Wraps</option>
+          <option>Sides</option>
+          <option>Drinks</option>
+          <option>Specials</option>
+        </select>
+        <span class="error-msg">Category is required.</span>
+      </div>
+
+      <div class="form-group" id="fg-item-price">
+        <label>Price ($) *</label>
+        <input type="number" id="inp-item-price" step="0.01" min="0.01" placeholder="0.00" />
+        <span class="error-msg">Enter a valid price.</span>
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="inp-item-desc" rows="2" placeholder="Short description…"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="inp-item-avail" checked />
+          Available on menu
+        </label>
+      </div>
+
+      <div class="action-btns">
+        <button class="btn btn-primary" onclick="saveItem()">Save Item</button>
+        <button class="btn btn-secondary" onclick="resetForm()">Cancel</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="../js/api.js"></script>
+<script>
+// ============================================================
+// Story 5: Admin menu management (Release 2)
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', loadMenuItems);
+
+async function loadMenuItems() {
+  const loading  = document.getElementById('loading');
+  const tableWrap = document.getElementById('table-wrap');
+  loading.style.display = 'block';
+  tableWrap.style.display = 'none';
+
+  try {
+    // Admin fetches ALL items (including unavailable) via the base /menu endpoint;
+    // we re-use the same endpoint — unavailable items are hidden from students only.
+    const items = await apiGet('/menu');
+    loading.style.display = 'none';
+    tableWrap.style.display = 'block';
+    renderTable(items);
+  } catch (err) {
+    loading.style.display = 'none';
+    showToast('Failed to load menu: ' + err.message);
+  }
+}
+
+function renderTable(items) {
+  const tbody = document.getElementById('menu-tbody');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="padding:16px;">No items found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map(item => `
+    <tr>
+      <td>${item.id}</td>
+      <td>${item.name}</td>
+      <td>${item.category}</td>
+      <td>${formatPrice(item.price)}</td>
+      <td>${item.available ? '✅' : '❌'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn btn-secondary" style="padding:4px 10px; font-size:0.82rem;"
+                  onclick='editItem(${JSON.stringify(item)})'>Edit</button>
+          <button class="btn btn-danger" style="padding:4px 10px; font-size:0.82rem;"
+                  onclick="deleteItem(${item.id}, '${item.name}')">Remove</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function showAddForm() {
+  resetForm();
+  document.getElementById('form-title').textContent = 'Add Menu Item';
+}
+
+function editItem(item) {
+  document.getElementById('form-title').textContent  = 'Edit Menu Item';
+  document.getElementById('edit-id').value           = item.id;
+  document.getElementById('inp-item-name').value     = item.name;
+  document.getElementById('inp-item-cat').value      = item.category;
+  document.getElementById('inp-item-price').value    = item.price;
+  document.getElementById('inp-item-desc').value     = item.description || '';
+  document.getElementById('inp-item-avail').checked  = item.available;
+}
+
+async function saveItem() {
+  if (!validateItemForm()) return;
+
+  const id = document.getElementById('edit-id').value;
+  const payload = {
+    name:        document.getElementById('inp-item-name').value.trim(),
+    category:    document.getElementById('inp-item-cat').value,
+    price:       parseFloat(document.getElementById('inp-item-price').value),
+    description: document.getElementById('inp-item-desc').value.trim(),
+    available:   document.getElementById('inp-item-avail').checked,
+  };
+
+  try {
+    if (id) {
+      await apiPut(`/menu/${id}`, payload);
+      showToast(`"${payload.name}" updated`);
+    } else {
+      await apiPost('/menu', payload);
+      showToast(`"${payload.name}" added to menu`);
+    }
+    resetForm();
+    loadMenuItems();
+  } catch (err) {
+    showToast('Save failed: ' + err.message);
+  }
+}
+
+async function deleteItem(id, name) {
+  if (!confirm(`Remove "${name}" from the menu?`)) return;
+  try {
+    await apiDelete(`/menu/${id}`);
+    showToast(`"${name}" removed from menu`);
+    loadMenuItems();
+  } catch (err) {
+    showToast('Remove failed: ' + err.message);
+  }
+}
+
+function resetForm() {
+  document.getElementById('edit-id').value          = '';
+  document.getElementById('inp-item-name').value    = '';
+  document.getElementById('inp-item-cat').value     = '';
+  document.getElementById('inp-item-price').value   = '';
+  document.getElementById('inp-item-desc').value    = '';
+  document.getElementById('inp-item-avail').checked = true;
+  document.getElementById('form-title').textContent = 'Add Menu Item';
+  ['fg-item-name','fg-item-cat','fg-item-price'].forEach(id =>
+    document.getElementById(id).classList.remove('has-error'));
+}
+
+function validateItemForm() {
+  let valid = true;
+  const checks = [
+    { fg: 'fg-item-name',  val: document.getElementById('inp-item-name').value.trim() },
+    { fg: 'fg-item-cat',   val: document.getElementById('inp-item-cat').value },
+    { fg: 'fg-item-price', val: document.getElementById('inp-item-price').value },
+  ];
+  checks.forEach(({ fg, val }) => {
+    const el = document.getElementById(fg);
+    el.classList.remove('has-error');
+    if (!val) { el.classList.add('has-error'); valid = false; }
+  });
+  const price = parseFloat(document.getElementById('inp-item-price').value);
+  if (isNaN(price) || price <= 0) {
+    document.getElementById('fg-item-price').classList.add('has-error');
+    valid = false;
+  }
+  return valid;
+}
+</script>
+
+</body>
+</html>

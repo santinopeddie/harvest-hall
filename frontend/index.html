@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harvest Hall – Online Ordering</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<!-- ── Navbar ── -->
+<header class="navbar">
+  <span class="brand">🌾 Harvest Hall</span>
+  <nav>
+    <a href="#menu"  onclick="navigate('menu')">Menu</a>
+    <a href="#order" onclick="navigate('order')">My Order</a>
+    <a href="pages/kitchen.html">Kitchen</a>
+    <a href="pages/admin.html">Admin</a>
+  </nav>
+</header>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: Menu  (Story 1)
+     ══════════════════════════════════════════════ -->
+<div id="menu-page" class="page active">
+  <div class="hero">
+    <h1>Harvest Hall Menu</h1>
+    <p>Browse today's offerings and add items to your order</p>
+  </div>
+
+  <div class="container">
+    <div class="cart-layout">
+
+      <!-- Left: menu listing -->
+      <div>
+        <h2 class="section-title">Menu</h2>
+
+        <!-- Category filter tabs -->
+        <div class="category-tabs" id="category-tabs">
+          <button class="active" onclick="filterCategory(null, this)">All</button>
+        </div>
+
+        <div id="menu-loading" class="spinner"></div>
+        <div id="menu-grid" class="menu-grid" style="display:none;"></div>
+        <p id="menu-error" style="display:none; color:var(--red);">
+          Could not load menu. Please make sure the server is running.
+        </p>
+      </div>
+
+      <!-- Right: cart panel -->
+      <aside class="cart-panel">
+        <h3>🛒 Your Order (<span id="cart-count">0</span>)</h3>
+        <div id="cart-items"></div>
+        <div class="cart-total">
+          <span>Total</span>
+          <span id="cart-total">$0.00</span>
+        </div>
+        <button class="btn btn-primary mt-16" style="width:100%"
+                onclick="navigate('order')" id="checkout-btn" disabled>
+          Proceed to Checkout
+        </button>
+        <button class="btn btn-secondary mt-16" style="width:100%; margin-top:8px"
+                onclick="clearCart()">Clear Cart</button>
+      </aside>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: Order form  (Stories 2 + 3)
+     ══════════════════════════════════════════════ -->
+<div id="order-page" class="page">
+  <div class="container">
+    <h2 class="section-title">Place Your Order</h2>
+
+    <div class="cart-layout">
+
+      <!-- Order form -->
+      <div class="form-card">
+        <h3 style="margin-bottom:18px; color:var(--green);">Your Details</h3>
+
+        <div class="form-group" id="fg-name">
+          <label for="inp-name">Full Name *</label>
+          <input type="text" id="inp-name" placeholder="e.g. Jane Student" />
+          <span class="error-msg">Name is required.</span>
+        </div>
+
+        <div class="form-group" id="fg-email">
+          <label for="inp-email">Email *</label>
+          <input type="email" id="inp-email" placeholder="you@brandonu.ca" />
+          <span class="error-msg">Please enter a valid email.</span>
+        </div>
+
+        <!-- Release 2: pickup time -->
+        <div class="form-group">
+          <label for="inp-pickup">Preferred Pickup Time (optional)</label>
+          <input type="datetime-local" id="inp-pickup" />
+        </div>
+
+        <div class="form-group">
+          <label for="inp-notes">Special Instructions (optional)</label>
+          <textarea id="inp-notes" rows="3" placeholder="Allergies, substitutions…"></textarea>
+        </div>
+
+        <button class="btn btn-primary" id="submit-btn" onclick="submitOrder()">
+          Place Order
+        </button>
+        <button class="btn btn-secondary mt-16" style="margin-left:8px"
+                onclick="navigate('menu')">← Back to Menu</button>
+      </div>
+
+      <!-- Order summary -->
+      <aside class="cart-panel">
+        <h3>Order Summary</h3>
+        <div id="order-summary-items"></div>
+        <div class="cart-total">
+          <span>Total</span>
+          <span id="order-summary-total">$0.00</span>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: Confirmation  (Story 3)
+     ══════════════════════════════════════════════ -->
+<div id="confirm-page" class="page">
+  <div class="container text-center" style="padding-top:48px;">
+    <div class="confirmation-box">
+      <div class="check-icon">✅</div>
+      <h2>Order Confirmed!</h2>
+      <p id="confirm-message" class="text-muted" style="margin:8px 0;"></p>
+      <div class="order-id" id="confirm-order-id"></div>
+
+      <table class="order-summary-table" id="confirm-table">
+        <thead>
+          <tr>
+            <th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody id="confirm-rows"></tbody>
+      </table>
+
+      <p style="font-weight:700; font-size:1.05rem; margin-top:8px;">
+        Total: <span id="confirm-total"></span>
+      </p>
+
+      <div id="confirm-pickup" style="margin-top:8px;" class="text-muted"></div>
+
+      <button class="btn btn-primary mt-24" onclick="startNewOrder()">
+        Place Another Order
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="js/api.js"></script>
+<script>
+// ============================================================
+// State
+// ============================================================
+let allMenuItems = [];
+let activeCategory = null;
+
+// ============================================================
+// Boot
+// ============================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  renderCart();
+  Cart.onChange(renderCart);
+  await loadMenu();
+});
+
+// ============================================================
+// Navigation helpers
+// ============================================================
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(page + '-page').classList.add('active');
+  if (page === 'order') renderOrderSummary();
+}
+
+// ============================================================
+// Story 1: Load & display menu
+// ============================================================
+async function loadMenu() {
+  const loading = document.getElementById('menu-loading');
+  const grid    = document.getElementById('menu-grid');
+  const errEl   = document.getElementById('menu-error');
+
+  try {
+    allMenuItems = await apiGet('/menu');
+    loading.style.display = 'none';
+    grid.style.display = 'grid';
+
+    // Build category tabs
+    const categories = [...new Set(allMenuItems.map(i => i.category))].sort();
+    const tabsEl = document.getElementById('category-tabs');
+    categories.forEach(cat => {
+      const btn = document.createElement('button');
+      btn.textContent = cat;
+      btn.onclick = () => filterCategory(cat, btn);
+      tabsEl.appendChild(btn);
+    });
+
+    renderMenuGrid(allMenuItems);
+  } catch (err) {
+    loading.style.display = 'none';
+    errEl.style.display = 'block';
+    console.error(err);
+  }
+}
+
+function filterCategory(category, btn) {
+  activeCategory = category;
+  document.querySelectorAll('.category-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const filtered = category ? allMenuItems.filter(i => i.category === category) : allMenuItems;
+  renderMenuGrid(filtered);
+}
+
+function renderMenuGrid(items) {
+  const grid = document.getElementById('menu-grid');
+  if (!items.length) {
+    grid.innerHTML = '<p class="text-muted">No items in this category.</p>';
+    return;
+  }
+  grid.innerHTML = items.map(item => `
+    <div class="menu-card">
+      <span class="item-category">${item.category}</span>
+      <div class="item-name">${item.name}</div>
+      <div class="item-desc">${item.description || ''}</div>
+      <div class="item-price">${formatPrice(item.price)}</div>
+      <button class="btn-add" onclick='addToCart(${JSON.stringify(item)})'>
+        + Add to Order
+      </button>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// Cart management
+// ============================================================
+function addToCart(item) {
+  Cart.addItem(item);
+  showToast(`${item.name} added to your order`);
+}
+
+function clearCart() {
+  Cart.clear();
+  showToast('Cart cleared');
+}
+
+function renderCart() {
+  const itemsEl   = document.getElementById('cart-items');
+  const totalEl   = document.getElementById('cart-total');
+  const countEl   = document.getElementById('cart-count');
+  const checkBtn  = document.getElementById('checkout-btn');
+  const items     = Cart.getItems();
+
+  countEl.textContent = Cart.getCount();
+  totalEl.textContent  = formatPrice(Cart.getTotal());
+  checkBtn.disabled   = items.length === 0;
+
+  if (!items.length) {
+    itemsEl.innerHTML = '<p class="cart-empty">Your cart is empty.</p>';
+    return;
+  }
+
+  itemsEl.innerHTML = items.map(item => `
+    <div class="cart-item">
+      <span>${item.name}</span>
+      <div class="item-controls">
+        <button onclick="Cart.updateQuantity(${item.id}, -1); renderCart();">−</button>
+        <span>${item.quantity}</span>
+        <button onclick="Cart.updateQuantity(${item.id}, +1); renderCart();">+</button>
+        <span style="min-width:54px; text-align:right">${formatPrice(item.price * item.quantity)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderOrderSummary() {
+  const items  = Cart.getItems();
+  const el     = document.getElementById('order-summary-items');
+  const totEl  = document.getElementById('order-summary-total');
+  totEl.textContent = formatPrice(Cart.getTotal());
+
+  if (!items.length) {
+    el.innerHTML = '<p class="cart-empty">No items — go back to menu.</p>';
+    return;
+  }
+  el.innerHTML = items.map(i => `
+    <div class="cart-item">
+      <span>${i.name} ×${i.quantity}</span>
+      <span>${formatPrice(i.price * i.quantity)}</span>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// Story 2 + 3: Submit order
+// ============================================================
+async function submitOrder() {
+  if (!validateOrderForm()) return;
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Placing order…';
+
+  const cartItems = Cart.getItems();
+  if (!cartItems.length) {
+    showToast('Your cart is empty!');
+    btn.disabled = false;
+    btn.textContent = 'Place Order';
+    return;
+  }
+
+  const pickupRaw = document.getElementById('inp-pickup').value;
+
+  const payload = {
+    customerName:        document.getElementById('inp-name').value.trim(),
+    customerEmail:       document.getElementById('inp-email').value.trim(),
+    pickupTime: pickupRaw ? pickupRaw + ':00' : null,
+    specialInstructions: document.getElementById('inp-notes').value.trim(),
+    items: cartItems.map(i => ({ menuItemId: i.id, quantity: i.quantity })),
+  };
+
+  try {
+    const confirmation = await apiPost('/orders', payload);
+    showConfirmation(confirmation);
+    Cart.clear();
+  } catch (err) {
+    showToast('Order failed: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Place Order';
+  }
+}
+
+function validateOrderForm() {
+  let valid = true;
+
+  const nameEl  = document.getElementById('inp-name');
+  const emailEl = document.getElementById('inp-email');
+
+  const fgName  = document.getElementById('fg-name');
+  const fgEmail = document.getElementById('fg-email');
+
+  fgName.classList.remove('has-error');
+  fgEmail.classList.remove('has-error');
+
+  if (!nameEl.value.trim()) {
+    fgName.classList.add('has-error');
+    valid = false;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(emailEl.value.trim())) {
+    fgEmail.classList.add('has-error');
+    valid = false;
+  }
+
+  return valid;
+}
+
+// ============================================================
+// Story 3: Show confirmation screen
+// ============================================================
+function showConfirmation(data) {
+  document.getElementById('confirm-message').textContent  = data.confirmationMessage || '';
+  document.getElementById('confirm-order-id').textContent = 'Order #' + data.orderId;
+  document.getElementById('confirm-total').textContent    = formatPrice(data.totalAmount);
+
+  const pickup = document.getElementById('confirm-pickup');
+  pickup.textContent = data.pickupTime
+    ? '🕐 Pickup time: ' + formatDateTime(data.pickupTime)
+    : '';
+
+  const tbody = document.getElementById('confirm-rows');
+  tbody.innerHTML = (data.items || []).map(i => `
+    <tr>
+      <td>${i.itemName}</td>
+      <td>${i.quantity}</td>
+      <td>${formatPrice(i.priceAtOrder)}</td>
+      <td>${formatPrice(i.lineTotal)}</td>
+    </tr>
+  `).join('');
+
+  navigate('confirm');
+}
+
+function startNewOrder() {
+  navigate('menu');
+  document.getElementById('inp-name').value  = '';
+  document.getElementById('inp-email').value = '';
+  document.getElementById('inp-pickup').value = '';
+  document.getElementById('inp-notes').value  = '';
+}
+</script>
+
+</body>
+</html>
