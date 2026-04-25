@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Order Status – Harvest Hall</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+  <link rel="icon" href="/favicon_io/favicon.ico" type="image/x-icon">
+</head>
+<body>
+
+<header class="navbar">
+  <span class="brand">🌾 Harvest Hall</span>
+  <nav>
+    <a href="../index.html">Menu</a>
+    <a href="status.html">Order Status</a>
+    <a href="kitchen.html">Kitchen</a>
+    <a href="admin.html">Admin</a>
+  </nav>
+</header>
+
+<div class="container" style="max-width:600px;">
+  <h2 class="section-title" style="margin-top:28px;">Check Your Order Status</h2>
+
+  <div class="form-card">
+    <p class="text-muted" style="margin-bottom:18px;">
+      Enter your email address to look up your recent orders.
+    </p>
+
+    <div class="form-group" id="fg-email">
+      <label for="inp-email">Email Address *</label>
+      <input type="email" id="inp-email" placeholder="you@brandonu.ca" />
+      <span class="error-msg">Please enter a valid email.</span>
+    </div>
+
+    <button class="btn btn-primary" onclick="lookupOrders()">
+      Check Status
+    </button>
+  </div>
+
+  <div id="loading" class="spinner" style="display:none;"></div>
+  <div id="results" style="margin-top:24px;"></div>
+</div>
+
+<div id="toast"></div>
+<script src="../js/api.js"></script>
+<script>
+async function lookupOrders() {
+  const email = document.getElementById('inp-email').value.trim();
+  const fg    = document.getElementById('fg-email');
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  fg.classList.remove('has-error');
+  if (!emailRegex.test(email)) {
+    fg.classList.add('has-error');
+    return;
+  }
+
+  const loading = document.getElementById('loading');
+  const results = document.getElementById('results');
+  loading.style.display = 'block';
+  results.innerHTML = '';
+
+  try {
+    const orders = await apiGet('/orders?email=' + encodeURIComponent(email));
+    loading.style.display = 'none';
+
+    if (!orders.length) {
+      results.innerHTML = `
+        <div class="form-card text-center">
+          <p class="text-muted">No orders found for <strong>${email}</strong>.</p>
+        </div>`;
+      return;
+    }
+
+    results.innerHTML = orders.map(order => `
+      <div class="form-card" style="margin-bottom:16px;">
+        <div class="flex-between" style="margin-bottom:10px;">
+          <span style="font-weight:700; font-size:1.05rem;">Order #${order.id}</span>
+          <span class="badge badge-${order.status}">${getStatusLabel(order.status)}</span>
+        </div>
+        <p class="text-muted" style="margin-bottom:8px;">
+          🕐 Ordered: ${formatDateTime(order.orderTime)}
+          ${order.pickupTime ? '<br>📦 Pickup: ' + formatDateTime(order.pickupTime) : ''}
+        </p>
+        <div style="margin-bottom:10px;">
+          ${(order.orderItems || []).map(i => `
+            <div style="font-size:0.88rem; padding:2px 0;">
+              ${i.menuItem.name} × ${i.quantity}
+            </div>
+          `).join('')}
+        </div>
+        <div style="font-weight:700; color:var(--green);">
+          Total: ${formatPrice(order.totalAmount)}
+        </div>
+        ${getStatusMessage(order.status)}
+      </div>
+    `).join('');
+
+  } catch (err) {
+    loading.style.display = 'none';
+    showToast('Error looking up orders: ' + err.message);
+  }
+}
+
+function getStatusLabel(status) {
+  const labels = {
+    'PENDING':   '⏳ Pending',
+    'CONFIRMED': '✅ Confirmed',
+    'PREPARING': '👨‍🍳 Preparing',
+    'READY':     '🔔 Ready for Pickup',
+    'COMPLETED': '✔️ Completed',
+    'CANCELLED': '❌ Cancelled'
+  };
+  return labels[status] || status;
+}
+
+function getStatusMessage(status) {
+  const messages = {
+    'PENDING':   '<p style="margin-top:8px; font-size:0.85rem; color:#f57c00;">⏳ Your order has been received and is awaiting confirmation.</p>',
+    'CONFIRMED': '<p style="margin-top:8px; font-size:0.85rem; color:#1565c0;">✅ Your order is confirmed! Estimated wait: 5–15 minutes.</p>',
+    'PREPARING': '<p style="margin-top:8px; font-size:0.85rem; color:#f57c00;">👨‍🍳 Your food is being prepared. It will be ready soon!</p>',
+    'READY':     '<p style="margin-top:8px; font-size:0.85rem; color:#2e7d32; font-weight:700;">🔔 Your order is ready for pickup at Harvest Hall!</p>',
+    'COMPLETED': '<p style="margin-top:8px; font-size:0.85rem; color:#616161;">✔️ This order has been completed. Enjoy your meal!</p>',
+    'CANCELLED': '<p style="margin-top:8px; font-size:0.85rem; color:#c62828;">❌ This order was cancelled. Please contact Harvest Hall for assistance.</p>',
+  };
+  return messages[status] || '';
+}
+</script>
+
+</body>
+</html>
